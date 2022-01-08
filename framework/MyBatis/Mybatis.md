@@ -25,9 +25,7 @@
 
 - 结构
 
-    ![mybatis结构](F:\Note\framework\Mybatis.assets\mybatis结构.jpg)
-
-
+    ![mybatis结构](Mybatis.assets/mybatis结构.jpg)
 
 ### 3.mybatis入门程序
 
@@ -156,7 +154,7 @@
 
 - 映射文件
   
-    ![image-20211220101926370](F:\Note\framework\Mybatis.assets\image-20211220101926370.png)
+    ![image-20211220101926370](Mybatis.assets/image-20211220101926370.png)
     
 
 ### 5.添加用户
