@@ -1297,5 +1297,796 @@
   * 比如：老师和学生
   * 一对多查询
   * 一对多查询
-* 
+
+### 45.关联查询环境搭建
+
+* 环境搭建
+
+  ![image-20211222091202440](Mybatis.assets/image-20211222091202440.png)
+
+* 代码实现
+
+  ```java
+  public class Customer {
+      private Integer customerId;//用户编号
+      private String customerName;//用户姓名
+      private String address;//收货地址
+      private List<Order> orderList;//订单列表
+  }
+  ```
+
+  ```java
+  public class Order {
+      private Integer orderId;//订单编号
+      private String orderState;//订单状态
+      private Customer customer;//用户信息
+  }
+  ```
+
+### 46.关联查询之一对一查询
+
+* 需求
+
+  * 根据id查询订单信息，关联查询用户信息
+
+* 代码实现
+
+  ```xml
+  <!--Order类的自定义输出映射规则-->
+  <resultMap id="orderMap" type="order">
+      <id property="orderId" column="order_id" javaType="int"></id>
+      <result property="orderState" column="order_state" javaType="String"></result>
+      <association property="customer" javaType="customer">
+          <id property="customerId" column="customer_id" javaType="int"></id>
+          <result property="customerName" column="customer_name" javaType="String"></result>
+          <result property="address" column="address" javaType="String"></result>
+      </association>
+  </resultMap>
+  
+  <select id="selectOrderAndCustomerByOrderId" resultMap="orderMap">
+      select *
+      from tb_order
+      inner join tb_customer on tb_customer.customer_id = tb_order.customer_no
+      where tb_order.order_id = #{orderId}
+  </select>
+  ```
+
+### 47.分步查询之一对一
+
+* 概述
+
+  * 将一次多表查询拆分成多次单表查询，为后续的延迟加载做铺垫
+
+* 需求
+
+  * 根据id查询订单信息，分步查询用户信息
+
+* 分析
+
+  ```sql
+  -- 根据orderId查询tb_order信息(customer_no)，再根据customer_no查询tb_customer
+  select customer_no from tb_order where order_id = 1;
+  select * from tb_customer where customer_id = 1;
+  ```
+
+* 代码实现
+
+  ```xml
+  <!--分步查询-->
+  <resultMap id="orderMap2" type="order">
+      <id property="orderId" column="order_id" javaType="int"></id>
+      <result property="orderState" column="order_state" javaType="String"></result>
+  
+      <!--①②调用第二次单表查询:传入customer_no字段值-->
+      <association
+              property="customer"
+              select="com.atguigu.mapper.CustomerMapper.selectCustomerByCustomerId"
+              column="customer_no"
+      />
+  </resultMap>
+  
+  <!--①①第一次单表查询-->
+  <select id="selectOrderByOrderId" resultMap="orderMap2">
+      select *
+      from tb_order
+      where order_id = #{orderId}
+  </select>
+  ```
+
+  ```xml
+  <!--①③第二次单表查询--><select id="selectCustomerByCustomerId" resultType="customer">    select *    from tb_customer    where customer_id = #{customerId}</select>
+  ```
+
+
+### 48.分步查询之一对多
+
+* 需求
+
+  * 根据id查询用户记录，分布查询订单记录
+
+* 分析
+
+  ```sql
+  -- 根据customer_name查询tb_customer信息(customer_id)，再根据customer_id查询tb_order
+  select * from tb_customer where customer_name = '张三';
+  select * from tb_order where customer_no = 1;
+  ```
+
+* 代码实现
+
+  ```xml
+  <!--分步查询-->
+  <resultMap id="customerMap2" type="customer">
+      <id property="customerId" column="customer_id" javaType="int"></id>
+      <result property="customerName" column="customer_name" javaType="String"></result>
+      <result property="address" column="address" javaType="String"></result>
+      <!--②②调用第二次单表查询-->
+      <collection property="orderList"
+                  ofType="order"                select="com.atguigu.mapper.OrderMapper.selectOrderListByCustomerId"
+                  column="customer_id"/>
+  </resultMap>
+  
+  <!--②①第一次单表查询-->
+  <select id="selectCustomerByCustomerName" resultMap="customerMap2">
+      select * from tb_customer where customer_name = #{customerName}
+  </select>
+  ```
+
+  ```xml
+  <!--②③第二次单表查询-->
+  <select id="selectOrderListByCustomerId" resultType="order">
+      select *
+      from tb_order
+      where customer_no = #{customerId}
+  </select>
+  ```
+
+### 49.mybatis延迟加载
+
+* 概述
+  * 延迟加载也就做懒加载，就是在使用某条数据再去查询，不使用就不查询
+* 注意事项
+  * 通常情况下，一对一查询不需要做延迟加载，一对多需要做延迟加载
+
+### 50.延迟加载之一对一
+
+* 开发步骤
+
+  * ①编写mybatis-config.xml
+    * 开启延迟加载
+  * ②给具体statement配置延迟加载
+
+* ①编写mybatis-config.xml
+
+  ```xml
+  <!--开启延迟加载-->
+  <setting name="lazyLoadingEnabled" value="true"/>
+  ```
+
+* ②给具体statement配置延迟加载
+
+  ```xml
+  <!--分步查询-->
+  <resultMap id="orderMap2" type="order">
+      <id property="orderId" column="order_id" javaType="int"></id>
+      <result property="orderState" column="order_state" javaType="String"></result>
+  
+      <!--①②调用第二次单表查询:传入customer_no字段值-->
+      <!-- fetchType="eager"-->
+      <association
+                   property="customer"
+                   select="com.atguigu.mapper.CustomerMapper.selectCustomerByCustomerId"
+                   column="customer_no"
+                   fetchType="lazy" />
+  </resultMap>
+  
+  <!--①①第一次单表查询-->
+  <select id="selectOrderByOrderId" resultMap="orderMap2">
+      select *
+      from tb_order
+      where order_id = #{orderId}
+  </select>
+  ```
+
+### 51.延迟加载之一对多
+
+* 开发步骤
+
+  * ①编写mybatis-config.xml
+    * 开启延迟加载
+  * ②给具体statement配置延加载
+
+* ①编写mybatis-config.xml
+
+* ②给具体statement配置延迟加载
+
+  ```xml
+  <!--分步查询-->
+  <resultMap id="customerMap2" type="customer">
+      <id property="customerId" column="customer_id" javaType="int"></id>
+      <result property="customerName" column="customer_name" javaType="String"></result>
+      <result property="address" column="address" javaType="String"></result>
+      <!--②②调用第二次单表查询-->
+      <collection property="orderList"
+                  ofType="order"
+                  select="com.atguigu.mapper.OrderMapper.selectOrderListByCustomerId"
+                  column="customer_id"
+                  fetchType="lazy"
+      />
+  
+  </resultMap>
+  
+  <!--②①第一次单表查询-->
+  <select id="selectCustomerByCustomerName" resultMap="customerMap2">
+      select * from tb_customer where customer_name = #{customerName}
+  </select>
+  ```
+
+### 52.mybatis缓存
+
+* 概述
+
+  * ![image-20211222140447219](Mybatis.assets/image-20211222140447219.png)
+
+  * 第一次查询数据库(磁盘)后，会将记录存储到缓存中，第二次查询该记录，直接从缓存(内存)中获取
+
+* 分类
+
+  * 一级缓存
+    * 当前SqlSession有效
+  * 二级缓存
+    * SqlSessionFactory有效，跨SqlSession
+    * 当SqlSession.close()，一级缓存就会写入到二级缓存中
+
+### 53.一级缓存的验证
+
+* 概述
+
+  * 一级缓存是SqlSession范围的缓存，当调用SqlSession的修改，添加，删除，commit()，close()等方法时，就会清空一级缓存
+
+* 代码实现
+
+  ```java
+  @Test
+  public void selectUserById() throws Exception {
+      SqlSession sqlSession = sqlSessionFactory.openSession();
+      UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+      //查询userId=1的记录
+      User user = userMapper.selectUserById(37);
+      System.out.println("user = " + user);
+  
+      //查询userId=1的记录
+      user = userMapper.selectUserById(37);
+      System.out.println("user = " + user);
+  
+      sqlSession.close();
+  }
+  ```
+
+### 54.一级缓存的清空
+
+* 概述
+
+  * 如果SqlSession去执行commit操作(执行插入、更新、删除)，清空SqlSession中的一级缓存，这样做的目的是为了让缓存中存储的是最新的信息
+
+* 代码实现
+
+  ```java
+  @Test
+  public void selectUserById() throws Exception {
+      SqlSession sqlSession = sqlSessionFactory.openSession();
+      UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+      //查询userId=1的记录
+      User user = userMapper.selectUserById(37);
+      System.out.println("user = " + user);
+  
+      //执行DML，清空一级缓存
+      userMapper.deleteUserById(15);
+  
+      //查询userId=1的记录
+      user = userMapper.selectUserById(37);
+      System.out.println("user = " + user);
+  
+      sqlSession.close();
+  }
+  ```
+
+### 54.二级缓存的验证
+
+* 概述
+
+  * 二级缓存是跨SqlSession的
+  * 当SqlSession关闭时，会将一级缓存中的内容写入到二级缓存中
+
+* 开发步骤
+
+  * ①编写mybatis-config.xml
+    * 开启全局缓存
+  * ②编写mapper映射文件
+    * 开启二级缓存
+  * ③二级缓存验证
+
+* ①编写mybatis-config.xml
+
+  ```xml
+  <!--开启缓存-->
+  <setting name="cacheEnabled" value="true"/>
+  ```
+
+* ②编写mapper映射文件
+
+  ````xml
+  <?xml version="1.0" encoding="UTF-8" ?>
+  <!DOCTYPE mapper
+          PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+          "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+  <mapper namespace="com.atguigu.mapper.UserMapper">
+  
+      <!--开启二级缓存-->
+      <cache></cache>
+  
+      <select id="selectUserById" resultType="user" useCache="true">
+          select *
+          from tb_user
+          where user_id = #{userId}
+      </select>
+  </mapper>
+  ````
+
+* ③二级缓存验证
+
+  ```java
+  @Test
+  public void selectUserById2() throws Exception {
+      SqlSession sqlSession = sqlSessionFactory.openSession();
+      UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+      //-----一级缓存的验证-----
+      User user = userMapper.selectUserById(37);
+      //user = userMapper.selectUserById(37);
+      //一级缓存关闭，会将一级缓存中的内容写入到二级缓存
+      sqlSession.close();
+      //-----二级缓存的验证-----
+      sqlSession = sqlSessionFactory.openSession();
+      userMapper = sqlSession.getMapper(UserMapper.class);
+      user = userMapper.selectUserById(37);
+      sqlSession.close();
+  
+      sqlSession = sqlSessionFactory.openSession();
+      userMapper = sqlSession.getMapper(UserMapper.class);
+      user = userMapper.selectUserById(37);
+      sqlSession.close();
+  
+  }
+  ```
+
+### 55.逆向工程
+
+* 正向工程
+  * 先创建Java实体类，由框架负责根据实体类生成数据库表。Hibernate是支持正向工程的。
+* 逆向工程
+  * 先创建数据表，由框架负责根据数据库表，反向生成如下资源
+    * Java实体类、Mapper接口、Mapper配置文件
+
+### 56.逆向工程操作
+
+* 开发步骤
+
+  * ①新建项目：mybatis-generator-project
+  * ②编写pom.xml
+    * 引入逆向工程相关依赖
+  * ③编写generatorConfig.xml
+    * 逆向工程核心配置文件
+  * ④执行\mybatis-generator-maven-plugin
+    * 生成javabean实体类、mapper接口、mapper映射文件
+
+* ①新建项目：mybatis-generator-project
+
+* ②编写pom.xml
+
+  ```xml
+  <dependencies>
+      <dependency>
+          <groupId>org.mybatis</groupId>
+          <artifactId>mybatis</artifactId>
+          <version>3.5.7</version>
+      </dependency>
+  </dependencies>
+  <!-- 控制Maven在构建过程中相关配置 -->
+  <build>
+      <!-- 构建过程中用到的插件 -->
+      <plugins>
+          <!-- 具体插件，逆向工程的操作是以构建过程中插件形式出现的 -->
+          <plugin>
+              <groupId>org.mybatis.generator</groupId>
+              <artifactId>mybatis-generator-maven-plugin</artifactId>
+              <version>1.3.0</version>
+  
+              <!-- 插件的依赖 -->
+              <dependencies>
+                 <!-- 逆向工程的核心依赖 -->
+                  <dependency>
+                      <groupId>org.mybatis.generator</groupId>
+                      <artifactId>mybatis-generator-core</artifactId>
+                      <version>1.3.2</version>
+                  </dependency>
+  
+                  <!-- 数据库连接池 -->
+                  <dependency>
+                      <groupId>com.mchange</groupId>
+                      <artifactId>c3p0</artifactId>
+                      <version>0.9.2</version>
+                  </dependency>
+  
+                  <!-- MySQL驱动 -->
+                  <dependency>
+                      <groupId>mysql</groupId>
+                      <artifactId>mysql-connector-java</artifactId>
+                      <version>5.1.8</version>
+                  </dependency>
+              </dependencies>
+          </plugin>
+      </plugins>
+  </build>
+  ```
+
+* ③编写generatorConfig.xml
+
+  ```xml
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE generatorConfiguration
+          PUBLIC "-//mybatis.org//DTD MyBatis Generator Configuration 1.0//EN"
+          "http://mybatis.org/dtd/mybatis-generator-config_1_0.dtd">
+  <generatorConfiguration>
+      <!--
+              targetRuntime: 执行生成的逆向工程的版本
+                      MyBatis3Simple: 生成基本的CRUD（清新简洁版）
+                      MyBatis3: 生成带条件的CRUD（奢华尊享版）
+       -->
+      <context id="DB2Tables" targetRuntime="MyBatis3">
+          <!-- 数据库的连接信息 -->
+          <jdbcConnection driverClass="com.mysql.jdbc.Driver"
+                          connectionURL="jdbc:mysql://127.0.0.1:3306/mydb1"
+                          userId="root"
+                          password="root">
+          </jdbcConnection>
+          <!-- javaBean的生成策略-->
+          <javaModelGenerator targetPackage="com.atguigu.pojo" targetProject=".\src\main\java">
+              <property name="enableSubPackages" value="true"/>
+              <property name="trimStrings" value="true"/>
+          </javaModelGenerator>
+          <!-- SQL映射文件的生成策略 -->
+          <sqlMapGenerator targetPackage="com.atguigu.mapper" targetProject=".\src\main\java">
+              <property name="enableSubPackages" value="true"/>
+          </sqlMapGenerator>
+          <!-- Mapper接口的生成策略 -->
+          <javaClientGenerator type="XMLMAPPER" targetPackage="com.atguigu.mapper"
+                               targetProject=".\src\main\java">
+              <property name="enableSubPackages" value="true"/>
+          </javaClientGenerator>
+          <!-- 逆向分析的表 -->
+          <!-- tableName设置为*号，可以对应所有表，此时不写domainObjectName -->
+          <!-- domainObjectName属性指定生成出来的实体类的类名 -->
+          <table tableName="tb_user" domainObjectName="User"/>
+          <table tableName="tb_exam" domainObjectName="Exam"/>
+      </context>
+  </generatorConfiguration>
+  ```
+
+* ④执行mybatis-generator-maven-plugin
+
+  * ![image-20211222151430149](Mybatis.assets/image-20211222151430149.png)
+
+### 57.QBC查询
+
+* 概述
+
+  * QBC：Query By Criteria
+  * QBC查询最大的特点就是将SQL语句中的WHERE子句进行了组件化的封装，让我们可以用Criteria对象的方法自由的拼装查询的条件
+
+* 代码实现
+
+  ```java
+  public class UserMapperTest {
+  
+      private SqlSessionFactory sqlSessionFactory;
+  
+      @Before
+      public void init() throws IOException {
+          sqlSessionFactory = new SqlSessionFactoryBuilder()
+                  .build(Resources.getResourceAsStream("SqlMapConfig.xml"));
+      }
+  
+      /**
+       * 添加记录，插入全部字段
+       */
+      @Test
+      public void insert() {
+          SqlSession sqlSession = sqlSessionFactory.openSession();
+          UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+  
+          User record = new User(null, null, "12345", 250.0);
+          userMapper.insert(record);
+  
+          sqlSession.commit();
+          sqlSession.close();
+      }
+  
+      /**
+       * 添加记录，插入部分字段(动态SQL)
+       */
+      @Test
+      public void insertSelective() {
+          SqlSession sqlSession = sqlSessionFactory.openSession();
+          UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+          User record = new User(null, null, "12345", 250.0);
+          userMapper.insertSelective(record);
+  
+          sqlSession.commit();
+          sqlSession.close();
+      }
+  
+      /**
+       * 删除记录，根据id
+       */
+      @Test
+      public void deleteByPrimaryKey() {
+          SqlSession sqlSession = sqlSessionFactory.openSession();
+          UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+          int deleteByPrimaryKey = userMapper.deleteByPrimaryKey(50);
+          System.out.println("deleteByPrimaryKey = " + deleteByPrimaryKey);
+          sqlSession.commit();
+          sqlSession.close();
+      }
+  
+      /**
+       * 删除记录，根据Criteria条件
+       */
+      @Test
+      public void deleteByExample() {
+          SqlSession sqlSession = sqlSessionFactory.openSession();
+          UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+  
+          UserExample userExample = new UserExample();
+          UserExample.Criteria criteria = userExample.createCriteria();
+          criteria.andUserIdEqualTo(49);
+          UserExample.Criteria criteria2 = userExample.or();
+          criteria2.andUserIdEqualTo(50);
+          userMapper.deleteByExample(userExample);
+  
+          sqlSession.commit();
+          sqlSession.close();
+      }
+  
+      /**
+       * 修改记录，根据id，修改全部字段
+       */
+      @Test
+      public void updateByPrimaryKey() {
+          SqlSession sqlSession = sqlSessionFactory.openSession();
+          UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+          User record = new User(48, null, "123", 500.0);
+          userMapper.updateByPrimaryKey(record);
+          sqlSession.commit();
+          sqlSession.close();
+      }
+  
+      /**
+       * 修改记录，根据id，修改部分字段(动态SQL)
+       */
+      @Test
+      public void updateByPrimaryKeySelective() {
+          SqlSession sqlSession = sqlSessionFactory.openSession();
+          UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+          User record = new User(48, null, "123", 500.0);
+          userMapper.updateByPrimaryKeySelective(record);
+          sqlSession.commit();
+          sqlSession.close();
+      }
+  
+      /**
+       * 修改记录，根据Criteria条件，修改全部字段
+       */
+      @Test
+      public void updateByExample() {
+          SqlSession sqlSession = sqlSessionFactory.openSession();
+          UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+  
+          //要修改生成的值
+          User record = new User(48, null, "aaa", 500.0);
+          //条件
+          UserExample userExample = new UserExample();
+          UserExample.Criteria criteria = userExample.createCriteria();
+          criteria.andUserIdEqualTo(48);
+          userMapper.updateByExample(record, userExample);
+  
+          sqlSession.commit();
+          sqlSession.close();
+      }
+  
+      /**
+       * 修改记录，根据Criteria条件，修改部分字段(动态SQL)
+       */
+      @Test
+      public void updateByExampleSelective() {
+          SqlSession sqlSession = sqlSessionFactory.openSession();
+          UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+  
+          //要修改生成的值
+          User record = new User(48, null, "bbb", 500.0);
+          //条件
+          UserExample userExample = new UserExample();
+          UserExample.Criteria criteria = userExample.createCriteria();
+          criteria.andUserIdEqualTo(48);
+          userMapper.updateByExampleSelective(record, userExample);
+  
+          sqlSession.commit();
+          sqlSession.close();
+  
+      }
+  
+      /**
+       * 查询记录，根据id
+       */
+      @Test
+      public void selectByPrimaryKey() {
+          SqlSession sqlSession = sqlSessionFactory.openSession();
+          UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+  
+          User user = userMapper.selectByPrimaryKey(48);
+          System.out.println("user = " + user);
+          sqlSession.close();
+  
+      }
+  
+      /**
+       * 查询记录，根据Criteria条件
+       */
+      @Test
+      public void selectByExample() {
+  
+          SqlSession sqlSession = sqlSessionFactory.openSession();
+          UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+  
+          UserExample userExample = new UserExample();
+          UserExample.Criteria criteria = userExample.createCriteria();
+          criteria.andUserNameLike("%a%");
+          List<User> userList = userMapper.selectByExample(userExample);
+          System.out.println("userList = " + userList);
+          sqlSession.close();
+      }
+  
+      /**
+       * 统计个数，根据Criteria条件
+       */
+      @Test
+      public void countByExample() {
+          SqlSession sqlSession = sqlSessionFactory.openSession();
+          UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+  
+          UserExample userExample = new UserExample();
+          UserExample.Criteria criteria = userExample.createCriteria();
+          criteria.andUserNameLike("%a%");
+          int count = userMapper.countByExample(userExample);
+          System.out.println("count = " + count);
+          sqlSession.close();
+  
+      }
+  }
+  ```
+
+### 58.mybatis注解基本使用
+
+* 概述
+
+  * 替代mapper映射文件
+
+* 代码实现
+
+  ```java
+  public interface UserMapper {
+      @Insert("insert into tb_user values(null,#{userName},#{userPwd},#{money})")
+      int addUser(User inputUser) throws Exception;
+  
+      @Delete("delete from tb_user where user_id = #{userId}")
+      int deleteUserByPrimaryKey(Integer userId) throws Exception;
+  
+      @Update("update tb_user set user_name = #{userName} where user_id = #{userId}")
+      int updateUserByPrimaryKey(User user) throws Exception;
+  
+      @Select("select * from tb_user where user_id = #{userId}")
+      User selectUserByPrimaryKey(Integer userId) throws Exception;
+  
+      @Select("select * from tb_user")
+      List<User> selectUserList() throws Exception;
+  }
+  ```
+
+### 59.复杂关系映射注解说明
+
+* 概述
+  * 之前我们可以通过映射文件的配置来实现，在使用注解开发时我们需要借助@Result注解，@Result注解，@One注解，@Many注解
+* @Results注解
+  * 相当于<resultMap>标签
+  * 配置@Result注解使用
+* @Result注解
+  * 相当于<id>标签，<result>标签
+  * 配合@One、@Many注解使用
+* @One
+  * 相当于<association>标签
+  * 一对一查询
+* @Many
+  * 相当于<collection>标签
+  * 一对多查询
+
+### 60.注解实现一对一查询
+
+* 需求
+
+  * 根据id查询订单信息，关联用户信息
+
+* 代码实现
+
+  ```java
+  public interface OrderMapper {
+      @Results({
+              @Result(id = true, property = "orderId", column = "order_id", javaType = Integer.class),
+              @Result(id = false, property = "orderState", column = "order_state", javaType = String.class),
+              @Result(
+                      id = false,
+                      property = "customer",
+                      column = "customer_no",
+                      one = @One(//①②调用第二次单表查询
+                              select = "com.atguigu.mapper.CustomerMapper.selectCustomerByCustomerId",
+                              fetchType = FetchType.EAGER
+                      ))
+      })
+      //①①第一次单表查询
+      @Select("select * from tb_order where order_id = #{orderId}")
+      Order selectOrderByOrderId(Integer orderId) throws Exception;
+  }
+  ```
+
+  ```java
+  public interface CustomerMapper {
+      //①③第二次单表查询
+      @Select("select * from tb_customer where customer_id = #{customerId}")
+      Customer selectCustomerByCustomerId(Integer customerId) throws Exception;
+  
+  }
+  ```
+
+### 61.注解实现一对多查询
+
+* 需求
+
+  * 根据id查询用户信息，关联订单信息
+
+* 代码实现
+
+  ```java
+  public interface CustomerMapper {
+      //②①第一次单表查询
+      @Results({
+              @Result(id = true, property = "customerId", column = "customer_id", javaType = Integer.class),
+              @Result(id = false, property = "customerName", column = "customer_name", javaType = String.class),
+              @Result(id = false, property = "address", column = "address", javaType = String.class),
+              @Result(
+                      id = false,
+                      property = "orderList",
+                      column = "customer_id",
+                      many = @Many(//②②调用第二次单表查询
+                              select = "com.atguigu.mapper.OrderMapper.selectOrderListByCustomerId",
+                              fetchType = FetchType.LAZY
+                      )
+              )
+  
+      })
+      @Select("select * from tb_customer where customer_name = #{customerName}")
+      Customer selectCustomerByCustomerName(String customerName) throws Exception;
+  }
+  ```
+
+  
+
+
 
